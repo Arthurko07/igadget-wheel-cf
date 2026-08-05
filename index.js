@@ -1,6 +1,6 @@
 /**
  * ⚡ iGadget — Колесо Фортуны (Telegram Mini App)
- * Express + grammY + JSON-хранилище + загрузка картинок (multer)
+ * Версии 1.1: вероятности призов задаются в процентах
  */
 const express = require('express');
 const multer  = require('multer');
@@ -11,31 +11,43 @@ const { Bot, InlineKeyboard } = require('grammy');
 
 /* ================= НАСТРОЙКИ (env) ================= */
 const BOT_TOKEN        = process.env.BOT_TOKEN || '';
-const APP_URL          = (process.env.APP_URL || '').replace(/\/$/, ''); // https://ваш-домен.com
+const APP_URL          = (process.env.APP_URL || '').replace(/\/$/, '');
 const ADMIN_IDS        = (process.env.ADMIN_IDS || '').split(',').map(s => Number(s.trim())).filter(Boolean);
-const ADMIN_PASSWORD   = process.env.ADMIN_PASSWORD || ''; // вход в админку из браузера (без Telegram)
-const DAILY_SPIN_LIMIT = Number(process.env.DAILY_SPIN_LIMIT || 3); // спинов в день на пользователя
+const ADMIN_PASSWORD   = process.env.ADMIN_PASSWORD || '';
+const DAILY_SPIN_LIMIT = Number(process.env.DAILY_SPIN_LIMIT || 3);
 const PORT             = Number(process.env.PORT || 3000);
 
-/* ================= ДАННЫЕ (JSON вместо БД) ================= */
+/* ================= ДАННЫЕ ================= */
 const DB_PATH = path.join(__dirname, 'db.json');
 let db = { prizes: [], wins: [] };
 try { db = JSON.parse(fs.readFileSync(DB_PATH, 'utf8')); } catch (e) {}
 const saveDb = () => fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
 
-// Демо-призы при первом запуске (потом замените своими с картинками)
+// Демо-призы (сумма = 100%)
 if (!db.prizes.length) {
   const demo = [
     ['Скидка 10%', '💸', 30, 0],
     ['Стикеры', '🎨', 25, 0],
     ['Промокод', '🎁', 20, 0],
     ['Чехол для смартфона', '📱', 12, 10],
-    ['Наушники', '🎧', 5, 3],
     ['Ещё попытка', '🔄', 8, 0],
+    ['Наушники', '🎧', 5, 3],
   ];
-  db.prizes = demo.map(([name, emoji, weight, stock]) => ({
-    id: crypto.randomUUID(), name, emoji, weight, stock, active: true, image: null, createdAt: Date.now(),
+  db.prizes = demo.map(([name, emoji, percent, stock]) => ({
+    id: crypto.randomUUID(), name, emoji, percent, stock, active: true, image: null, createdAt: Date.now(),
   }));
+  saveDb();
+}
+
+// Авто-миграция со старых "весов" на проценты
+if (db.prizes.some(p => p.percent === undefined)) {
+  const tw = db.prizes.reduce((s, p) => s + (Number(p.weight) || 1), 0);
+  db.prizes.forEach(p => {
+    if (p.percent === undefined) {
+      p.percent = Math.round(((Number(p.weight) || 1) / tw) * 1000) / 10;
+      delete p.weight;
+    }
+  });
   saveDb();
 }
 
@@ -50,11 +62,11 @@ const storage = multer.diskStorage({
 });
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 МБ
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g|webp|gif)$/i.test(file.mimetype)),
 });
 
-/* ================= ПРОВЕРКА Telegram initData ================= */
+/* ================= Telegram initData ================= */
 function parseInitData(initData) {
   try {
     const params = new URLSearchParams(initData);
@@ -77,7 +89,7 @@ function parseInitData(initData) {
 function getUser(req) {
   const user = parseInitData(req.header('X-Init-Data') || '');
   if (user) return user;
-  if (!BOT_TOKEN) return { id: 1, first_name: 'Dev', username: 'dev' }; // локальный dev-режим
+  if (!BOT_TOKEN) return { id: 1, first_name: 'Dev', username: 'dev' };
   return null;
 }
 
@@ -101,8 +113,9 @@ const spinsToday = (userId) => {
   const today = new Date().toDateString();
   return db.wins.filter(w => w.userId === userId && new Date(w.at).toDateString() === today).length;
 };
+const clampPercent = v => Math.min(100, Math.max(0, Number(v) || 0));
 
-/* ---------- Публичное API (колесо) ---------- */
+/* ---------- Публичное API ---------- */
 app.get('/api/prizes', (req, res) => {
   res.json(activePrizes().map(p => ({
     id: p.id, name: p.name, emoji: p.emoji || '🎁', stock: p.stock,
@@ -127,10 +140,16 @@ app.post('/api/spin', (req, res) => {
   if (done >= DAILY_SPIN_LIMIT)
     return res.status(429).json({ error: 'На сегодня спины закончились 🙌 Возвращайтесь завтра!', left: 0 });
 
-  // Взвешенный рандом: чем больше weight, тем чаще выпадает приз
-  const total = wheel.reduce((s, p) => s + (p.weight || 1), 0);
-  let r = Math.random() * total, winner = wheel[0];
-  for (const p of wheel) { r -= (p.weight || 1); if (r <= 0) { winner = p; break; } }
+  // Выбор по процентам. Если сумма != 100 — нормализуем пропорционально.
+  const totalP = wheel.reduce((s, p) => s + (Number(p.percent) || 0), 0);
+  let winner;
+  if (totalP <= 0) {
+    winner = wheel[Math.floor(Math.random() * wheel.length)];
+  } else {
+    let r = Math.random() * totalP;
+    winner = wheel[0];
+    for (const p of wheel) { r -= (Number(p.percent) || 0); if (r <= 0) { winner = p; break; } }
+  }
 
   if (winner.stock > 0) winner.stock--;
   db.wins.push({
@@ -157,7 +176,7 @@ app.post('/api/admin/prizes', requireAdmin, upload.single('image'), (req, res) =
     id: crypto.randomUUID(),
     name: name.trim(),
     emoji: (req.body.emoji || '🎁').trim(),
-    weight: Math.max(1, Number(req.body.weight) || 1),
+    percent: clampPercent(req.body.percent),
     stock: Math.max(0, Number(req.body.stock) || 0),
     active: String(req.body.active) !== 'false',
     image: req.file ? req.file.filename : null,
@@ -173,7 +192,7 @@ app.put('/api/admin/prizes/:id', requireAdmin, upload.single('image'), (req, res
   const b = req.body;
   if (b.name !== undefined && b.name.trim()) p.name = b.name.trim();
   if (b.emoji !== undefined) p.emoji = b.emoji.trim() || '🎁';
-  if (b.weight !== undefined) p.weight = Math.max(1, Number(b.weight) || 1);
+  if (b.percent !== undefined) p.percent = clampPercent(b.percent);
   if (b.stock !== undefined) p.stock = Math.max(0, Number(b.stock) || 0);
   if (b.active !== undefined) p.active = String(b.active) === 'true';
   if (req.file) {
