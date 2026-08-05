@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>iGadget • Админ</title>
+<link rel="stylesheet" href="admin.css"/>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="logo">⚙️ iGadget <span>ADMIN</span></div>
+  <div class="tabs">
+    <button class="tab tab--active" data-tab="prizes">Призы</button>
+    <button class="tab" data-tab="stats">Статистика</button>
+  </div>
+</header>
+
+<main>
+  <section id="tab-prizes">
+    <button class="btn btn--primary btn--add" id="addBtn">＋ Добавить приз</button>
+    <div class="cards" id="prizeCards"></div>
+  </section>
+
+  <section id="tab-stats" class="hidden">
+    <div class="stat-grid" id="statGrid"></div>
+    <h3>Последние выигрыши</h3>
+    <div class="panel" id="recentList"></div>
+  </section>
+</main>
+
+<!-- Форма приза -->
+<div class="modal" id="formModal">
+  <div class="modal__card">
+    <h3 id="formTitle">Новый приз</h3>
+    <form id="prizeForm">
+      <label>Название
+        <input name="name" required maxlength="60" placeholder="Например: Наушники Pro"/>
+      </label>
+      <label>Эмодзи (если нет фото)
+        <input name="emoji" maxlength="4" placeholder="🎁"/>
+      </label>
+      <div class="row">
+        <label>Вес вероятности
+          <input name="weight" type="number" min="1" step="1" value="10"/>
+        </label>
+        <label>Кол-во (0 = ∞)
+          <input name="stock" type="number" min="0" step="1" value="0"/>
+        </label>
+      </div>
+      <label class="check"><input type="checkbox" name="active" checked/> Активен на колесе</label>
+
+      <div class="drop" id="drop">
+        <input type="file" id="fileInput" accept="image/*" hidden/>
+        <img id="preview" class="hidden" alt=""/>
+        <div class="drop__hint" id="dropHint">
+          📸 Нажмите или перетащите картинку приза<br/>
+          <small>PNG / JPG / WebP • лучше квадратную, до 5 МБ</small>
+        </div>
+      </div>
+
+      <div class="row modal__actions">
+        <button type="button" class="btn btn--ghost" id="cancelBtn">Отмена</button>
+        <button type="submit" class="btn btn--primary">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Пароль -->
+<div class="modal" id="pwdModal">
+  <div class="modal__card">
+    <h3>🔒 Доступ</h3>
+    <p class="muted">Откройте через Telegram (аккаунт администратора) или введите пароль.</p>
+    <input type="password" id="pwdInput" placeholder="Пароль администратора"/>
+    <button class="btn btn--primary" id="pwdOk">Войти</button>
+  </div>
+</div>
+
+<script src="admin.js"></script>
+</body>
+</html>
