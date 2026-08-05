@@ -1,0 +1,8 @@
+igadget-wheel-cf/
+├── wrangler.toml       ← конфиг Cloudflare
+├── schema.sql          ← таблицы БД
+├── package.json
+├── src/index.js        ← весь сервер (Worker)
+└── public/             ← БЕЗ ИЗМЕНЕНИЙ из прошлых версий:
+    ├── index.html, app.js, style.css      (колесо)
+    └── admin.html, admin.js, admin.css    (админка с процентами)
